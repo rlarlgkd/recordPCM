@@ -77,7 +77,8 @@ var Recorder = exports.Recorder = (function () {
             var recLength = 0,
                 recBuffers = [],
                 sampleRate = undefined,
-                numChannels = undefined;
+                numChannels = undefined,
+                storedBuffers = null;  // Add this line at the top of your recorder.js to store the buffer
 
             self.onmessage = function (e) {
                 switch (e.data.command) {
@@ -113,7 +114,7 @@ var Recorder = exports.Recorder = (function () {
             }
 
             function exportWAV(type) {
-                var buffers = [];
+                var buffers = storedBuffers || [];  // Use the stored buffer if available
                 for (var channel = 0; channel < numChannels; channel++) {
                     buffers.push(mergeBuffers(recBuffers[channel], recLength));
                 }
@@ -125,8 +126,9 @@ var Recorder = exports.Recorder = (function () {
                 }
                 var dataview = encodeWAV(interleaved);
                 var audioBlob = new Blob([dataview], { type: type });
-
                 self.postMessage({ command: 'exportWAV', data: audioBlob });
+                storedBuffers = null;
+
             }
 
             function getBuffer() {
@@ -134,6 +136,7 @@ var Recorder = exports.Recorder = (function () {
                 for (var channel = 0; channel < numChannels; channel++) {
                     buffers.push(mergeBuffers(recBuffers[channel], recLength));
                 }
+                storedBuffers = buffers;  // Store the buffer
                 self.postMessage({ command: 'getBuffer', data: buffers });
             }
 

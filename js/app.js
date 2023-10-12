@@ -1,6 +1,28 @@
 //webkitURL is deprecated but nevertheless
 URL = window.URL || window.webkitURL;
 
+// Initialize IndexedDB
+let db;
+
+function initDB() {
+  const request = indexedDB.open("audioDB", 1);
+
+  request.onupgradeneeded = function (event) {
+    db = event.target.result;
+    const objectStore = db.createObjectStore("audio", { keyPath: "id", autoIncrement: true });
+  };
+
+  request.onsuccess = function (event) {
+    db = event.target.result;
+  };
+
+  request.onerror = function (event) {
+    console.log("Error opening IndexedDB", event);
+  };
+}
+
+initDB();
+
 var gumStream; //stream from getUserMedia()
 var rec; //Recorder.js object
 var input; //MediaStreamAudioSourceNode we'll be recording
@@ -120,56 +142,133 @@ function stopRecording() {
 
   // Get the buffer data instead of exporting as WAV
   rec.getBuffer(displayBufferLength);
+
+  // After checking RMS, export to WAV
+  rec.exportWAV(createDownloadLink);
 }
 
+// function createDownloadLink(blob) {
+//   var url = URL.createObjectURL(blob);
+//   var au = document.createElement("audio");
+//   var li = document.createElement("li");
+//   var link = document.createElement("a");
+
+//   //name of .wav file to use during upload and download (without extendion)
+//   var filename = new Date().toISOString();
+
+//   //add controls to the <audio> element
+//   au.controls = true;
+//   au.src = url;
+
+//   //save to disk link
+//   link.href = url;
+//   link.download = filename + ".wav"; //download forces the browser to donwload the file using the  filename
+//   link.innerHTML = "Save to disk";
+
+//   //add the new audio element to li
+//   li.appendChild(au);
+
+//   //add the filename to the li
+//   li.appendChild(document.createTextNode(filename + ".wav "));
+
+//   //add the save to disk link to li
+//   li.appendChild(link);
+
+//   //upload link
+//   var upload = document.createElement("a");
+//   upload.href = "#";
+//   upload.innerHTML = "Upload";
+//   upload.addEventListener("click", function (event) {
+//     var xhr = new XMLHttpRequest();
+//     xhr.onload = function (e) {
+//       if (this.readyState === 4) {
+//         console.log("Server returned: ", e.target.responseText);
+//       }
+//     };
+//     var fd = new FormData();
+//     fd.append("audio_data", blob, filename);
+//     xhr.open("POST", "upload.php", true);
+//     xhr.send(fd);
+//   });
+//   li.appendChild(document.createTextNode(" ")); //add a space in between
+//   li.appendChild(upload); //add the upload link to li
+
+//   //add the li element to the ol
+//   recordingsList.appendChild(li);
+// }
+
+// function createDownloadLink(blob) {
+//   const transaction = db.transaction(["audio"], "readwrite");
+//   const objectStore = transaction.objectStore("audio");
+
+//   const request = objectStore.add({ audioBlob: blob });
+
+//   request.onsuccess = function (event) {
+//     objectStore.getAll().onsuccess = function (event) {
+//       const allRecords = event.target.result;
+//       if (allRecords.length > 3) {
+//         const excessRecords = allRecords.length - 3;
+//         for (let i = 0; i < excessRecords; i++) {
+//           objectStore.delete(allRecords[i].id);
+//         }
+//       }
+//     };
+//   };
+
+//   objectStore.getAll().onsuccess = function (event) {
+//     const allRecords = event.target.result;
+//     const recordingsList = document.getElementById("recordingsList");
+//     recordingsList.innerHTML = "";
+
+//     allRecords.forEach((record, index) => {
+//       const audioBlob = record.audioBlob;
+//       const url = URL.createObjectURL(audioBlob);
+//       const au = document.createElement("audio");
+//       const li = document.createElement("li");
+
+//       au.controls = true;
+//       au.src = url;
+
+//       li.appendChild(au);
+//       recordingsList.appendChild(li);
+//     });
+//   };
+// }
 function createDownloadLink(blob) {
-  var url = URL.createObjectURL(blob);
-  var au = document.createElement("audio");
-  var li = document.createElement("li");
-  var link = document.createElement("a");
+  const transaction = db.transaction(["audio"], "readwrite");
+  const objectStore = transaction.objectStore("audio");
 
-  //name of .wav file to use during upload and download (without extendion)
-  var filename = new Date().toISOString();
+  const request = objectStore.add({ audioBlob: blob });
 
-  //add controls to the <audio> element
-  au.controls = true;
-  au.src = url;
-
-  //save to disk link
-  link.href = url;
-  link.download = filename + ".wav"; //download forces the browser to donwload the file using the  filename
-  link.innerHTML = "Save to disk";
-
-  //add the new audio element to li
-  li.appendChild(au);
-
-  //add the filename to the li
-  li.appendChild(document.createTextNode(filename + ".wav "));
-
-  //add the save to disk link to li
-  li.appendChild(link);
-
-  //upload link
-  var upload = document.createElement("a");
-  upload.href = "#";
-  upload.innerHTML = "Upload";
-  upload.addEventListener("click", function (event) {
-    var xhr = new XMLHttpRequest();
-    xhr.onload = function (e) {
-      if (this.readyState === 4) {
-        console.log("Server returned: ", e.target.responseText);
+  request.onsuccess = function (event) {
+    // Delete excess records if more than 20
+    objectStore.getAll().onsuccess = function (event) {
+      const allRecords = event.target.result;
+      if (allRecords.length > 3) {
+        const excessRecords = allRecords.length - 3;
+        for (let i = 0; i < excessRecords; i++) {
+          objectStore.delete(allRecords[i].id);
+        }
       }
-    };
-    var fd = new FormData();
-    fd.append("audio_data", blob, filename);
-    xhr.open("POST", "upload.php", true);
-    xhr.send(fd);
-  });
-  li.appendChild(document.createTextNode(" ")); //add a space in between
-  li.appendChild(upload); //add the upload link to li
 
-  //add the li element to the ol
-  recordingsList.appendChild(li);
+      // Visualize the recordings
+      const recordingsList = document.getElementById("recordingsList");
+      recordingsList.innerHTML = "";
+
+      allRecords.forEach((record, index) => {
+        const audioBlob = record.audioBlob;
+        const url = URL.createObjectURL(audioBlob);
+        const au = document.createElement("audio");
+        const li = document.createElement("li");
+
+        au.controls = true;
+        au.src = url;
+
+        li.appendChild(au);
+        recordingsList.appendChild(li);
+      });
+    };
+  };
 }
 
 // function displayBufferLength(buffers) {
@@ -192,7 +291,7 @@ function displayBufferLength(buffers) {
   var rms = calculateRMS(leftChannelData);
 
   // Check if the RMS is above a certain threshold
-  var threshold = 0.01; // This value can be adjusted based on your specific needs
+  var threshold = 0.005; // This value can be adjusted based on your specific needs
   if (rms > threshold) {
     console.log("Distinct sound or noise detected.");
   } else {
