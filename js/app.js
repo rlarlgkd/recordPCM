@@ -1,5 +1,7 @@
 //webkitURL is deprecated but nevertheless
 URL = window.URL || window.webkitURL;
+// indexedDB.deleteDatabase("audioDB");
+// indexedDB.deleteDatabase("recordingsDB");
 
 // Initialize IndexedDB
 let db;
@@ -8,11 +10,18 @@ function initDB() {
   const request = indexedDB.open("audioDB", 1);
 
   request.onupgradeneeded = function (event) {
+    console.log("Upgrading database...");
     db = event.target.result;
-    const objectStore = db.createObjectStore("audio", { keyPath: "id", autoIncrement: true });
+    db.createObjectStore("audio", {
+      keyPath: "id",
+      autoIncrement: true,
+    });
+    db.createObjectStore("rmsValues", { autoIncrement: true }); // New object store for RMS values
   };
 
   request.onsuccess = function (event) {
+    console.log("Database initialized successfully");
+
     db = event.target.result;
   };
 
@@ -22,6 +31,8 @@ function initDB() {
 }
 
 initDB();
+let recordingInterval;
+let pauseInterval;
 
 var gumStream; //stream from getUserMedia()
 var rec; //Recorder.js object
@@ -36,8 +47,11 @@ var stopButton = document.getElementById("stopButton");
 var pauseButton = document.getElementById("pauseButton");
 
 //add events to those 2 buttons
-recordButton.addEventListener("click", startRecording);
-stopButton.addEventListener("click", stopRecording);
+recordButton.addEventListener("click", function () {
+  clearRMSValues(); // Clear the RMS values object store
+  startCyclicalRecording();
+});
+stopButton.addEventListener("click", stopCyclicalRecording);
 pauseButton.addEventListener("click", pauseRecording);
 
 function startRecording() {
@@ -298,6 +312,14 @@ function displayBufferLength(buffers) {
     console.log("No distinct sound or noise detected.");
   }
   console.log(rms);
+  // Save RMS value to indexedDB
+  const request = indexedDB.open("audioDB", 1);
+  request.onsuccess = function (event) {
+    const db = event.target.result;
+    const transaction = db.transaction(["rmsValues"], "readwrite");
+    const objectStore = transaction.objectStore("rmsValues");
+    objectStore.add(rms);
+  };
 }
 
 function calculateRMS(data) {
@@ -306,4 +328,34 @@ function calculateRMS(data) {
     sum += data[i] * data[i];
   }
   return Math.sqrt(sum / data.length);
+}
+
+function clearRMSValues() {
+  const request = indexedDB.open("audioDB", 1);
+  request.onsuccess = function (event) {
+    const db = event.target.result;
+    const transaction = db.transaction(["rmsValues"], "readwrite");
+    const objectStore = transaction.objectStore("rmsValues");
+    objectStore.clear();
+  };
+}
+
+function startCyclicalRecording() {
+  startRecording(); // Assuming startRecording is your original function to start recording
+
+  // Stop the recording after 5 seconds
+  recordingInterval = setTimeout(() => {
+    stopRecording(); // Assuming stopRecording is your original function to stop recording
+
+    // Start recording again after 1 second
+    pauseInterval = setTimeout(startCyclicalRecording, 1000);
+  }, 5000);
+}
+
+function stopCyclicalRecording() {
+  // Clear any existing timeouts to stop the cycle
+  clearTimeout(recordingInterval);
+  clearTimeout(pauseInterval);
+
+  stopRecording(); // Assuming stopRecording is your original function to stop recording
 }
