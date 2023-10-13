@@ -159,6 +159,7 @@ function stopRecording() {
 
   // After checking RMS, export to WAV
   rec.exportWAV(createDownloadLink);
+  fetchAndSendRMSValues();
 }
 
 // function createDownloadLink(blob) {
@@ -327,7 +328,8 @@ function calculateRMS(data) {
   for (var i = 0; i < data.length; i++) {
     sum += data[i] * data[i];
   }
-  return Math.sqrt(sum / data.length);
+  var rms = Math.sqrt(sum / data.length);
+  return parseFloat(rms.toFixed(5));
 }
 
 function clearRMSValues() {
@@ -358,4 +360,39 @@ function stopCyclicalRecording() {
   clearTimeout(pauseInterval);
 
   stopRecording(); // Assuming stopRecording is your original function to stop recording
+}
+
+function fetchAndSendRMSValues() {
+  // Create a transaction
+  const transaction = db.transaction(["rmsValues"], "readonly");
+
+  // Create an object store handle
+  const objectStore = transaction.objectStore("rmsValues");
+
+  // Create a request to get all records from the object store
+  const getAllRequest = objectStore.getAll();
+
+  getAllRequest.onsuccess = function (event) {
+    const allRMSValues = event.target.result;
+
+    console.log(allRMSValues);
+    // Now you can send this data to the server
+    // sendRMSValuesToServer(allRMSValues);
+  };
+
+  getAllRequest.onerror = function (event) {
+    console.log("Failed to retrieve data from IndexedDB:", event);
+  };
+}
+
+function sendRMSValuesToServer(data) {
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "your_server_endpoint_here", true);
+  xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+  xhr.onreadystatechange = function () {
+    if (xhr.readyState === 4 && xhr.status === 200) {
+      console.log("Server response:", xhr.responseText);
+    }
+  };
+  xhr.send(JSON.stringify(data));
 }
